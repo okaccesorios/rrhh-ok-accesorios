@@ -47,6 +47,9 @@ def importar_excel(file_bytes, nombre_archivo: str, usuario: str, sector_overrid
     Devuelve (nuevos, actualizados, errores, lista_errores)
     """
     try:
+        import io
+        if isinstance(file_bytes, bytes):
+            file_bytes = io.BytesIO(file_bytes)
         df = pd.read_excel(file_bytes, header=0, dtype=str)
     except Exception as e:
         return 0, 0, 1, [f"No se pudo leer el archivo: {e}"]
