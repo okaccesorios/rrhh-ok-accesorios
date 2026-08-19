@@ -303,6 +303,13 @@ def importar_solicitudes(file_bytes, nombre_archivo: str, usuario: str):
                 errores.append(f"Fila {idx+2}: fecha inválida para {apellido}")
                 continue
 
+            # Regla 25-24: desde el día 25 pertenece al mes siguiente
+            if fecha_sol.day >= 25:
+                if fecha_sol.month == 12:
+                    periodo = f"{fecha_sol.year + 1}-01"
+                else:
+                    periodo = f"{fecha_sol.year}-{fecha_sol.month + 1:02d}"
+
             conn.execute("""INSERT INTO adelantos
                 (legajo, periodo, tipo, monto, descripcion, creado_por)
                 VALUES (?,?,?,?,?,?)""",
