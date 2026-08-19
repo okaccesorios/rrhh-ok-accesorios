@@ -204,11 +204,23 @@ def init_db():
 
 # ── Funciones de auditoría ────────────────────────────────────────
 def log_auditoria(usuario, accion, tabla=None, registro_id=None, detalle=None):
-    conn = get_conn()
-    conn.execute("""INSERT INTO auditoria (usuario,accion,tabla,registro_id,detalle)
-                    VALUES (?,?,?,?,?)""", (usuario,accion,tabla,registro_id,detalle))
-    conn.commit()
-    conn.close()
+    try:
+        conn = get_conn()
+        # Asegurar que las columnas existen antes de insertar
+        c = conn.cursor()
+        cols = [row[1] for row in c.execute("PRAGMA table_info(auditoria)").fetchall()]
+        if "tabla" not in cols:
+            c.execute("ALTER TABLE auditoria ADD COLUMN tabla TEXT")
+        if "registro_id" not in cols:
+            c.execute("ALTER TABLE auditoria ADD COLUMN registro_id INTEGER")
+        if "detalle" not in cols:
+            c.execute("ALTER TABLE auditoria ADD COLUMN detalle TEXT")
+        conn.execute("""INSERT INTO auditoria (usuario,accion,tabla,registro_id,detalle)
+                        VALUES (?,?,?,?,?)""", (usuario,accion,tabla,registro_id,detalle))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass  # La auditoría nunca debe frenar el sistema
 
 # ── Backup ────────────────────────────────────────────────────────
 def hacer_backup():
