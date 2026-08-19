@@ -129,6 +129,13 @@ def init_db():
 
     conn.commit()
 
+    # ── Migraciones automáticas ───────────────────────────────
+    # Agrega columna 'tipo' a colaboradores si no existe (migración v3.1)
+    cols_colab = [row[1] for row in c.execute("PRAGMA table_info(colaboradores)").fetchall()]
+    if "tipo" not in cols_colab:
+        c.execute("ALTER TABLE colaboradores ADD COLUMN tipo TEXT DEFAULT 'efectivo'")
+        conn.commit()
+
     # ── Usuario admin por defecto ──────────────────────────────
     c.execute("SELECT COUNT(*) FROM usuarios")
     if c.fetchone()[0] == 0:
