@@ -136,6 +136,18 @@ def init_db():
         c.execute("ALTER TABLE colaboradores ADD COLUMN tipo TEXT DEFAULT 'efectivo'")
         conn.commit()
 
+    # Verifica que la tabla auditoria tiene todas las columnas
+    cols_audit = [row[1] for row in c.execute("PRAGMA table_info(auditoria)").fetchall()]
+    if "tabla" not in cols_audit:
+        c.execute("ALTER TABLE auditoria ADD COLUMN tabla TEXT")
+        conn.commit()
+    if "registro_id" not in cols_audit:
+        c.execute("ALTER TABLE auditoria ADD COLUMN registro_id INTEGER")
+        conn.commit()
+    if "detalle" not in cols_audit:
+        c.execute("ALTER TABLE auditoria ADD COLUMN detalle TEXT")
+        conn.commit()
+
     # ── Usuario admin por defecto ──────────────────────────────
     c.execute("SELECT COUNT(*) FROM usuarios")
     if c.fetchone()[0] == 0:
