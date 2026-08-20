@@ -147,6 +147,7 @@ with st.sidebar:
     if puede("novedades"):       paginas.append(("📋 Novedades",        "novedades"))
     if puede("colaboradores"):   paginas.append(("👥 Colaboradores",    "colaboradores"))
     if puede("adelantos"):       paginas.append(("💰 Adelantos",        "adelantos"))
+    if puede("novedades"):       paginas.append(("🏖️ Vacaciones",       "vacaciones"))
     if puede("exportar"):        paginas.append(("📤 Exportar Excel",   "exportar"))
     if puede("feriados"):        paginas.append(("📅 Feriados",         "feriados"))
     if puede("usuarios"):        paginas.append(("🔑 Usuarios",         "usuarios"))
@@ -194,3 +195,5 @@ elif pag == "auditoria":
     from pages import auditoria; auditoria.show()
 elif pag == "backup":
     from pages import backup; backup.show()
+    elif pag == "vacaciones":
+    from pages import vacaciones; vacaciones.show()
