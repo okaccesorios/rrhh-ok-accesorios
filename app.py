@@ -195,5 +195,5 @@ elif pag == "auditoria":
     from pages import auditoria; auditoria.show()
 elif pag == "backup":
     from pages import backup; backup.show()
-    elif pag == "vacaciones":
+elif pag == "vacaciones":
     from pages import vacaciones; vacaciones.show()
