@@ -128,15 +128,14 @@ def calcular_periodo(periodo: str):
     else:
         mes_ant, anio_ant = mes - 1, anio
 
+    # Buscar marcaciones del rango completo (25 mes anterior al 24 este mes)
+    fecha_inicio = f"{anio_ant}-{mes_ant:02d}-25"
+    fecha_fin    = f"{anio}-{mes:02d}-24"
     marcaciones_raw = conn.execute("""
         SELECT legajo, fecha, horas_raw, ingreso, egreso
         FROM marcaciones
-        WHERE (
-            (fecha LIKE ? AND CAST(substr(fecha,9,2) AS INTEGER) >= 25)
-            OR
-            (fecha LIKE ? AND CAST(substr(fecha,9,2) AS INTEGER) <= 24)
-        )
-    """, (f"{anio_ant}-{mes_ant:02d}%", f"{periodo}%")).fetchall()
+        WHERE fecha >= ? AND fecha <= ?
+    """, (fecha_inicio, fecha_fin)).fetchall()
 
     marc_dict = {}
     for m in marcaciones_raw:
@@ -227,7 +226,7 @@ def calcular_periodo(periodo: str):
                 brk_min = cfg.get("break_min") or 0
                 tolerancia = 5  # minutos de gracia
 
-                if not fichadas or not fichadas["horas_raw"]:
+                if not fichadas or not fichadas["horas_raw"] or str(fichadas["horas_raw"]).strip() in ("","nan","None"):
                     if nov_dia:
                         estado = nov_dia["tipo"]
                     else:
