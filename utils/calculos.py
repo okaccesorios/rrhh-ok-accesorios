@@ -8,9 +8,9 @@ from utils.database import get_conn
 SABADO_LIMITE_EXTRA = 13 * 60  # 13:00 en minutos
 DIAS_ES = {"Mon":"Lun","Tue":"Mar","Wed":"Mié","Thu":"Jue","Fri":"Vie","Sat":"Sáb","Sun":"Dom"}
 
-# Colaboradores con sábado home office (no libre, no presencial)
-SAB_HOME_OFFICE = {"163","189"}  # Brandani, Gutierrez Franco
-# Colaboradores con sábado libre rotativo (1 por mes) — solo Guzman
+# Colaboradores con sábado home office
+SAB_HOME_OFFICE = {"162","189"}  # Brandani (nuevo legajo 162), Gutierrez Franco
+# Colaboradores con sábado libre — solo Guzman Wilfredo
 SAB_LIBRE = {"24"}
 
 def to_min(hhmm: str) -> int | None:
@@ -128,14 +128,12 @@ def calcular_periodo(periodo: str):
     else:
         mes_ant, anio_ant = mes - 1, anio
 
-    # Buscar marcaciones del rango completo (25 mes anterior al 24 este mes)
-    fecha_inicio = f"{anio_ant}-{mes_ant:02d}-25"
-    fecha_fin    = f"{anio}-{mes:02d}-24"
+    # Marcaciones: mes calendario completo
     marcaciones_raw = conn.execute("""
         SELECT legajo, fecha, horas_raw, ingreso, egreso
         FROM marcaciones
-        WHERE fecha >= ? AND fecha <= ?
-    """, (fecha_inicio, fecha_fin)).fetchall()
+        WHERE fecha LIKE ?
+    """, (f"{periodo}%",)).fetchall()
 
     marc_dict = {}
     for m in marcaciones_raw:
@@ -143,9 +141,10 @@ def calcular_periodo(periodo: str):
 
     conn.close()
 
-    # Rango del período: del 25 del mes anterior al 24 de este mes
-    primer_dia = date(anio_ant, mes_ant, 25)
-    ultimo_dia = date(anio, mes, 24)
+    # Rango de MARCACIONES: mes calendario completo (1 al último día del mes)
+    import calendar
+    primer_dia = date(anio, mes, 1)
+    ultimo_dia = date(anio, mes, calendar.monthrange(anio, mes)[1])
 
     resumen = []
 
@@ -202,7 +201,7 @@ def calcular_periodo(periodo: str):
                     estado = "Sábado libre"
                 else:
                     # Sábado presencial
-                    if fichadas and fichadas["horas_raw"]:
+                    if fichadas and fichadas["horas_raw"] and str(fichadas["horas_raw"]).strip() not in ("","nan","None"):
                         e, ia, fa, s = _parse_marcaciones(fichadas["horas_raw"])
                         entrada_str = e or ""
                         salida_str  = s or ""
@@ -216,7 +215,7 @@ def calcular_periodo(periodo: str):
                         if nov_dia:
                             estado = nov_dia["tipo"]
                         else:
-                            estado = "Sábado libre"
+                            estado = "Ausente Sáb"
 
             else:
                 # Día hábil L-V
