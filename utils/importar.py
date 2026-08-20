@@ -410,3 +410,100 @@ def importar_solicitudes(file_bytes, nombre_archivo: str, usuario: str):
                   detalle=f"{nombre_archivo}: {nuevos} nuevas, {actualizados} actualizadas")
 
     return nuevos, actualizados, len(errores), errores
+
+
+def importar_vacaciones(file_bytes, nombre_archivo: str, usuario: str):
+    """
+    Importa el Excel de vacaciones (hoja Resumen).
+    Formato: Apellido y nombre | Salida | Reincorp | Dias | Salida2 | Reincorp2
+    """
+    import io
+    from datetime import datetime, date, timedelta
+    if isinstance(file_bytes, bytes):
+        file_bytes = io.BytesIO(file_bytes)
+    try:
+        try:
+            df = pd.read_excel(file_bytes, sheet_name="Resumen", header=1, dtype=str)
+        except:
+            file_bytes.seek(0)
+            df = pd.read_excel(file_bytes, header=0, dtype=str)
+    except Exception as e:
+        return 0, 0, 1, [f"No se pudo leer el archivo: {e}"]
+
+    conn = get_conn()
+    colab_rows = conn.execute(
+        "SELECT legajo, apellido, nombre FROM colaboradores WHERE activo=1"
+    ).fetchall()
+
+    def _buscar_legajo(nombre_raw):
+        if not nombre_raw or str(nombre_raw).strip() in ("", "nan", "None"):
+            return None
+        nombre_raw = str(nombre_raw).strip().lower()
+        for r in colab_rows:
+            ap = r["apellido"].lower()
+            if ap in nombre_raw or nombre_raw.split()[0] in ap:
+                return str(r["legajo"])
+        return None
+
+    def _to_date(val):
+        if isinstance(val, datetime):
+            return val.date()
+        if isinstance(val, date):
+            return val
+        if isinstance(val, str) and val.strip() not in ("", "nan", "None", "-"):
+            for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
+                try:
+                    return datetime.strptime(val.strip(), fmt).date()
+                except:
+                    pass
+        return None
+
+    importadas = omitidas = 0
+    errores = []
+
+    for idx, row in df.iterrows():
+        vals = list(row.values)
+        if not vals or str(vals[0]).strip() in ("", "nan", "None", "Apellido y nombre"):
+            continue
+        nombre_raw = str(vals[0]).strip()
+        legajo = _buscar_legajo(nombre_raw)
+        if not legajo:
+            errores.append(f"Fila {idx+2}: no se encontró '{nombre_raw}'")
+            continue
+
+        rangos = []
+        try:
+            s1 = _to_date(vals[1]); r1 = _to_date(vals[2])
+            if s1 and r1 and r1 > s1:
+                rangos.append((s1, r1 - timedelta(days=1)))
+        except: pass
+        try:
+            s2 = _to_date(vals[4]); r2 = _to_date(vals[5])
+            if s2 and r2 and r2 > s2:
+                rangos.append((s2, r2 - timedelta(days=1)))
+        except: pass
+
+        if not rangos:
+            omitidas += 1
+            continue
+
+        for desde, hasta in rangos:
+            existe = conn.execute(
+                "SELECT id FROM novedades WHERE legajo=? AND tipo='Vacaciones' AND fecha_desde=?",
+                (legajo, str(desde))
+            ).fetchone()
+            if not existe:
+                conn.execute("""INSERT INTO novedades
+                    (legajo,tipo,fecha_desde,fecha_hasta,descripcion,estado,creado_por,aprobado_por)
+                    VALUES (?,?,?,?,?,'aprobado',?,?)""",
+                    (legajo,"Vacaciones",str(desde),str(hasta),
+                     f"Importado desde {nombre_archivo}",usuario,usuario))
+                importadas += 1
+            else:
+                omitidas += 1
+
+    conn.commit()
+    conn.close()
+    log_auditoria(usuario,"IMPORTAR_VACACIONES","novedades",
+                  detalle=f"{nombre_archivo}: {importadas} períodos")
+    return importadas, omitidas, len(errores), errores
