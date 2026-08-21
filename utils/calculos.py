@@ -97,7 +97,7 @@ def calcular_periodo(periodo: str):
         SELECT n.legajo, n.tipo, n.fecha_desde, n.fecha_hasta, n.descripcion
         FROM novedades n
         WHERE n.estado IN ('aprobado','enviado')
-        AND (n.fecha_desde LIKE ? OR n.fecha_hasta LIKE ?)
+        AND (n.fecha_desde LIKE %s OR n.fecha_hasta LIKE %s)
     """, (f"{periodo}%", f"{periodo}%")).fetchall():
         leg = str(row["legajo"])
         desde = date.fromisoformat(row["fecha_desde"])
@@ -132,7 +132,7 @@ def calcular_periodo(periodo: str):
     marcaciones_raw = conn.execute("""
         SELECT legajo, fecha, horas_raw, ingreso, egreso
         FROM marcaciones
-        WHERE fecha LIKE ?
+        WHERE fecha LIKE %s
     """, (f"{periodo}%",)).fetchall()
 
     marc_dict = {}
