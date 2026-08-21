@@ -114,7 +114,7 @@ def importar_excel(file_bytes, nombre_archivo: str, usuario: str, sector_overrid
         else:
             conn.execute("""INSERT INTO marcaciones
                 (legajo, fecha, horas_raw, ingreso, egreso, sector, fuente)
-                VALUES (?,?,?,?,?,?,?)""",
+                VALUES (%s,%s,%s,%s,%s,%s,%s)""",
                 (legajo, fecha_str, raw, ingreso, egreso, sector, nombre_archivo))
             nuevos += 1
 
@@ -277,7 +277,7 @@ def importar_solicitudes(file_bytes, nombre_archivo: str, usuario: str):
                 obs = f"{tipo_aus_raw}: {descripcion}" if descripcion else tipo_aus_raw
                 conn.execute("""INSERT INTO novedades
                     (legajo, tipo, fecha_desde, fecha_hasta, descripcion, estado, creado_por)
-                    VALUES (?,?,?,?,?,'pendiente',?)""",
+                    VALUES (%s,%s,%s,%s,%s,'pendiente',%s)""",
                     (legajo, tipo_nov, fecha_str, fecha_str, obs, usuario))
                 nov_nuevas += 1
 
@@ -312,7 +312,7 @@ def importar_solicitudes(file_bytes, nombre_archivo: str, usuario: str):
 
             conn.execute("""INSERT INTO adelantos
                 (legajo, periodo, tipo, monto, descripcion, creado_por)
-                VALUES (?,?,?,?,?,?)""",
+                VALUES (%s,%s,%s,%s,%s,%s)""",
                 (legajo, periodo, tipo_adel, monto,
                  f"{desc_adel} — importado desde {nombre_archivo}", usuario))
             adel_nuevos += 1
@@ -399,7 +399,7 @@ def importar_solicitudes(file_bytes, nombre_archivo: str, usuario: str):
         else:
             conn.execute("""INSERT INTO marcaciones
                 (legajo, fecha, horas_raw, ingreso, egreso, sector, fuente)
-                VALUES (?,?,?,?,?,?,?)""",
+                VALUES (%s,%s,%s,%s,%s,%s,%s)""",
                 (legajo, fecha_str, raw, ingreso, egreso, sector, nombre_archivo))
             nuevos += 1
 
@@ -495,7 +495,7 @@ def importar_vacaciones(file_bytes, nombre_archivo: str, usuario: str):
             if not existe:
                 conn.execute("""INSERT INTO novedades
                     (legajo,tipo,fecha_desde,fecha_hasta,descripcion,estado,creado_por,aprobado_por)
-                    VALUES (?,?,?,?,?,'aprobado',?,?)""",
+                    VALUES (%s,%s,%s,%s,%s,'aprobado',%s,%s)""",
                     (legajo,"Vacaciones",str(desde),str(hasta),
                      f"Importado desde {nombre_archivo}",usuario,usuario))
                 importadas += 1
