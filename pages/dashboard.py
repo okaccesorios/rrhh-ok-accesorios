@@ -34,7 +34,7 @@ def show():
     )
 
     feriados_mes = conn.execute(
-        "SELECT fecha, descripcion FROM feriados WHERE fecha LIKE ? ORDER BY fecha",
+        "SELECT fecha, descripcion FROM feriados WHERE fecha LIKE %s ORDER BY fecha",
         (f"{periodo}%",)
     ).fetchall()
     feriados_set = {r["fecha"] for r in feriados_mes}
@@ -63,7 +63,7 @@ def show():
     tard_mes = conn.execute("""
         SELECT COUNT(DISTINCT m.legajo) as n
         FROM marcaciones m JOIN colaboradores c ON c.legajo=m.legajo
-        WHERE m.fecha LIKE ?
+        WHERE m.fecha LIKE %s
         AND m.ingreso IS NOT NULL
         AND TIME(m.ingreso) > TIME(
             CASE c.sector
@@ -77,7 +77,7 @@ def show():
     # HE del mes (registros con egreso tardío — aproximación)
     he_mes = conn.execute("""
         SELECT COUNT(DISTINCT legajo) FROM marcaciones
-        WHERE fecha LIKE ? AND egreso > '18:00'
+        WHERE fecha LIKE %s AND egreso > '18:00'
     """, (f"{periodo}%",)).fetchone()[0]
 
     # Adelantos del mes
@@ -127,7 +127,7 @@ def show():
             for r in conn.execute("""
                 SELECT legajo, tipo FROM novedades
                 WHERE estado IN ('aprobado','enviado')
-                AND (fecha_desde <= ? AND (fecha_hasta >= ? OR fecha_hasta IS NULL))
+                AND (fecha_desde <= %s AND (fecha_hasta >= %s OR fecha_hasta IS NULL))
             """, (ayer.strftime("%Y-%m-%d"), ayer.strftime("%Y-%m-%d"))).fetchall():
                 nov_aprobadas[str(r["legajo"])] = r["tipo"]
 
@@ -182,7 +182,7 @@ def show():
             SELECT c.apellido||' '||c.nombre as nombre, c.sector,
                    COUNT(*) as cant
             FROM marcaciones m JOIN colaboradores c ON c.legajo=m.legajo
-            WHERE m.fecha LIKE ?
+            WHERE m.fecha LIKE %s
             AND m.ingreso IS NOT NULL
             AND TIME(m.ingreso) > TIME(
                 CASE c.sector
