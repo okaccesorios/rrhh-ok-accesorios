@@ -1,236 +1,158 @@
 """
-Base de datos SQLite — OK Accesorios RRHH
-Todas las tablas y funciones de acceso centralizadas aquí.
+Base de datos PostgreSQL — OK Accesorios RRHH
+Conecta a Supabase. Los datos persisten permanentemente.
 """
-import sqlite3, hashlib, os, shutil
-from datetime import datetime, date
+import os, hashlib
+from datetime import datetime
 from pathlib import Path
+import psycopg2
+import psycopg2.extras
 
-DB_PATH = Path(__file__).parent.parent / "data" / "rrhh.db"
-DB_PATH.parent.mkdir(exist_ok=True)
+def _get_db_url():
+    try:
+        import streamlit as st
+        return st.secrets["DATABASE_URL"]
+    except:
+        return os.environ.get("DATABASE_URL","")
 
 def get_conn():
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
+    url = _get_db_url()
+    conn = psycopg2.connect(url, connect_timeout=15)
+    conn.autocommit = False
     return conn
 
-def hash_pw(pw: str) -> str:
+def dict_cursor(conn):
+    return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+def hash_pw(pw):
     return hashlib.sha256(pw.encode()).hexdigest()
+
+def _count(conn, tabla):
+    c = dict_cursor(conn)
+    c.execute(f"SELECT COUNT(*) as n FROM {tabla}")
+    row = c.fetchone()
+    return row['n'] if row else 0
 
 def init_db():
     conn = get_conn()
-    c = conn.cursor()
+    c = dict_cursor(conn)
 
-    # ── Usuarios ─────────────────────────────────────────────
     c.execute("""CREATE TABLE IF NOT EXISTS usuarios (
-        id        INTEGER PRIMARY KEY AUTOINCREMENT,
-        username  TEXT UNIQUE NOT NULL,
-        nombre    TEXT NOT NULL,
-        password  TEXT NOT NULL,
-        rol       TEXT NOT NULL CHECK(rol IN ('admin','rrhh','consulta')),
-        activo    INTEGER DEFAULT 1,
-        creado_en TEXT DEFAULT (datetime('now','localtime'))
-    )""")
+        id SERIAL PRIMARY KEY, username TEXT UNIQUE NOT NULL,
+        nombre TEXT NOT NULL, password TEXT NOT NULL,
+        rol TEXT NOT NULL, activo INTEGER DEFAULT 1,
+        creado_en TEXT DEFAULT (NOW()::text))""")
 
-    # ── Colaboradores ─────────────────────────────────────────
     c.execute("""CREATE TABLE IF NOT EXISTS colaboradores (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        legajo      TEXT UNIQUE NOT NULL,
-        apellido    TEXT NOT NULL,
-        nombre      TEXT NOT NULL,
-        sector      TEXT NOT NULL,
-        turno       TEXT,
-        entrada     TEXT,
-        salida      TEXT,
-        entrada_sab TEXT,
-        salida_sab  TEXT,
-        break_min   INTEGER DEFAULT 0,
-        almuerzo_min INTEGER DEFAULT 60,
-        rotativo    INTEGER DEFAULT 0,
-        tipo        TEXT DEFAULT 'efectivo',
-        activo      INTEGER DEFAULT 1,
-        fecha_alta  TEXT DEFAULT (date('now','localtime')),
-        observaciones TEXT
-    )""")
+        id SERIAL PRIMARY KEY, legajo TEXT UNIQUE NOT NULL,
+        apellido TEXT NOT NULL, nombre TEXT NOT NULL, sector TEXT NOT NULL,
+        turno TEXT, entrada TEXT, salida TEXT, entrada_sab TEXT, salida_sab TEXT,
+        break_min INTEGER DEFAULT 0, almuerzo_min INTEGER DEFAULT 60,
+        rotativo INTEGER DEFAULT 0, tipo TEXT DEFAULT 'efectivo',
+        activo INTEGER DEFAULT 1, fecha_alta TEXT DEFAULT (NOW()::text),
+        observaciones TEXT)""")
 
-    # ── Marcaciones del reloj ─────────────────────────────────
     c.execute("""CREATE TABLE IF NOT EXISTS marcaciones (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        legajo      TEXT NOT NULL,
-        fecha       TEXT NOT NULL,
-        horas_raw   TEXT,
-        ingreso     TEXT,
-        egreso      TEXT,
-        sector      TEXT,
-        importado_en TEXT DEFAULT (datetime('now','localtime')),
-        fuente      TEXT,
-        UNIQUE(legajo, fecha)
-    )""")
+        id SERIAL PRIMARY KEY, legajo TEXT NOT NULL, fecha TEXT NOT NULL,
+        horas_raw TEXT, ingreso TEXT, egreso TEXT, sector TEXT,
+        importado_en TEXT DEFAULT (NOW()::text), fuente TEXT,
+        UNIQUE(legajo, fecha))""")
 
-    # ── Novedades ─────────────────────────────────────────────
     c.execute("""CREATE TABLE IF NOT EXISTS novedades (
-        id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        legajo       TEXT NOT NULL,
-        tipo         TEXT NOT NULL,
-        fecha_desde  TEXT NOT NULL,
-        fecha_hasta  TEXT,
-        descripcion  TEXT,
-        estado       TEXT DEFAULT 'pendiente' CHECK(estado IN ('pendiente','aprobado','rechazado','enviado')),
-        creado_por   TEXT,
-        aprobado_por TEXT,
-        creado_en    TEXT DEFAULT (datetime('now','localtime')),
-        modificado_en TEXT
-    )""")
+        id SERIAL PRIMARY KEY, legajo TEXT NOT NULL, tipo TEXT NOT NULL,
+        fecha_desde TEXT NOT NULL, fecha_hasta TEXT, descripcion TEXT,
+        estado TEXT DEFAULT 'pendiente', creado_por TEXT, aprobado_por TEXT,
+        creado_en TEXT DEFAULT (NOW()::text), modificado_en TEXT)""")
 
-    # ── Documentos adjuntos ───────────────────────────────────
-    c.execute("""CREATE TABLE IF NOT EXISTS documentos (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        legajo      TEXT NOT NULL,
-        novedad_id  INTEGER REFERENCES novedades(id),
-        nombre      TEXT NOT NULL,
-        tipo_mime   TEXT,
-        ruta        TEXT NOT NULL,
-        subido_por  TEXT,
-        subido_en   TEXT DEFAULT (datetime('now','localtime'))
-    )""")
-
-    # ── Adelantos / Descuentos ────────────────────────────────
     c.execute("""CREATE TABLE IF NOT EXISTS adelantos (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        legajo      TEXT NOT NULL,
-        periodo     TEXT NOT NULL,
-        tipo        TEXT NOT NULL CHECK(tipo IN ('adelanto','descuento_mercaderia','sancion','otro')),
-        monto       REAL,
-        descripcion TEXT,
-        creado_por  TEXT,
-        creado_en   TEXT DEFAULT (datetime('now','localtime'))
-    )""")
+        id SERIAL PRIMARY KEY, legajo TEXT NOT NULL, periodo TEXT NOT NULL,
+        tipo TEXT NOT NULL, monto NUMERIC, descripcion TEXT,
+        creado_por TEXT, creado_en TEXT DEFAULT (NOW()::text))""")
 
-    # ── Auditoría ─────────────────────────────────────────────
     c.execute("""CREATE TABLE IF NOT EXISTS auditoria (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        usuario     TEXT NOT NULL,
-        accion      TEXT NOT NULL,
-        tabla       TEXT,
-        registro_id INTEGER,
-        detalle     TEXT,
-        fecha       TEXT DEFAULT (datetime('now','localtime'))
-    )""")
+        id SERIAL PRIMARY KEY, usuario TEXT NOT NULL, accion TEXT NOT NULL,
+        tabla TEXT, registro_id INTEGER, detalle TEXT,
+        fecha TEXT DEFAULT (NOW()::text))""")
 
-    # ── Feriados ──────────────────────────────────────────────
     c.execute("""CREATE TABLE IF NOT EXISTS feriados (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        fecha       TEXT UNIQUE NOT NULL,
-        descripcion TEXT,
-        tipo        TEXT DEFAULT 'nacional'
-    )""")
+        id SERIAL PRIMARY KEY, fecha TEXT UNIQUE NOT NULL,
+        descripcion TEXT, tipo TEXT DEFAULT 'nacional')""")
 
     conn.commit()
 
-    # ── Migraciones automáticas ───────────────────────────────
-    # Agrega columna 'tipo' a colaboradores si no existe (migración v3.1)
-    cols_colab = [row[1] for row in c.execute("PRAGMA table_info(colaboradores)").fetchall()]
-    if "tipo" not in cols_colab:
-        c.execute("ALTER TABLE colaboradores ADD COLUMN tipo TEXT DEFAULT 'efectivo'")
-        conn.commit()
-
-    # Verifica que la tabla auditoria tiene todas las columnas
-    cols_audit = [row[1] for row in c.execute("PRAGMA table_info(auditoria)").fetchall()]
-    if "tabla" not in cols_audit:
-        c.execute("ALTER TABLE auditoria ADD COLUMN tabla TEXT")
-        conn.commit()
-    if "registro_id" not in cols_audit:
-        c.execute("ALTER TABLE auditoria ADD COLUMN registro_id INTEGER")
-        conn.commit()
-    if "detalle" not in cols_audit:
-        c.execute("ALTER TABLE auditoria ADD COLUMN detalle TEXT")
-        conn.commit()
-
-    # ── Usuario admin por defecto ──────────────────────────────
-    c.execute("SELECT COUNT(*) FROM usuarios")
-    if c.fetchone()[0] == 0:
-        c.execute("""INSERT INTO usuarios (username,nombre,password,rol)
-                     VALUES (?,?,?,?)""",
+    # Datos iniciales
+    if _count(conn, "usuarios") == 0:
+        c.execute("INSERT INTO usuarios (username,nombre,password,rol) VALUES (%s,%s,%s,%s)",
                   ("admin","Administrador",hash_pw("admin2026"),"admin"))
         conn.commit()
 
-    # ── Colaboradores de OK Accesorios ────────────────────────
-    c.execute("SELECT COUNT(*) FROM colaboradores")
-    if c.fetchone()[0] == 0:
-        colaboradores = [
-            ("24","GUZMAN","WILFREDO VICTOR","Administración","","08:00","17:30","10:00","14:00",0,90,0),
-            ("163","BRANDANI","GABRIELA","Administración","","09:00","18:00","10:00","14:00",0,60,0),
-            ("189","GUTIERREZ FRANCO","NICOLAS","Administración","","08:00","17:00","10:00","14:00",0,60,0),
-            ("200","SANS","JOAQUIN ALBERTO","Administración","","08:30","17:30","10:00","14:00",0,60,0),
-            ("103","TEIXIDO","PABLO","Compras","","09:00","18:00","09:00","13:00",0,60,0),
-            ("25","ATENCIO","MAXIMILIANO","Montecaseros","","09:00","18:00","09:00","13:00",0,60,0),
-            ("48","GIUNTA","LEONEL ALEJANDRO","Montecaseros","","09:00","18:00","09:00","13:00",0,60,0),
-            ("62","ARCAR","HERNAN ADOLFO","Montecaseros","","09:00","18:00","09:00","13:00",0,60,0),
-            ("115","CHAVEZ","MARCELA BELEN","Montecaseros","","09:00","18:00","09:00","13:00",15,60,0),
-            ("142","MIRANDA","JONATHAN","Montecaseros","","09:00","18:00","09:00","13:00",15,60,0),
-            ("167","SCHOENFELD MUÑOZ","GIMENA ALEJANDRA","Montecaseros","","09:00","18:00","09:00","13:00",0,60,0),
-            ("179","FARA","FERNANDO GABRIEL","Montecaseros","","09:00","18:00","09:00","13:00",15,60,0),
-            ("71","AMMILS","JUAN PABLO","Local calle San Juan","","10:00","19:00","10:00","14:00",15,60,0),
-            ("180","TEIXIDO","ANDREA","Local calle San Juan","","10:00","19:00","10:00","14:00",15,60,0),
-            ("190","RODRIGUEZ","DEBORA VANINA","Local calle San Juan","","10:00","19:00","10:00","14:00",15,60,0),
-            ("52","CASTILLO","GUILLERMO LEONARDO","Logistica","rotativo","08:00","17:00","08:00","13:00",0,60,1),
-            ("74","CASTRO CORREA","JUAN ALFREDO","Logistica","rotativo","08:00","17:00","08:00","13:00",0,60,1),
-            ("170","CABAÑEZ","LEONARDO","Logistica","rotativo","08:00","17:00","08:00","13:00",0,60,1),
-            ("181","FIGUEROA","GABRIEL EDUARDO","Logistica","rotativo","08:00","17:00","08:00","13:00",0,60,1),
-            ("185","ANDRADA","FERNANDO","Logistica","rotativo","08:00","17:00","08:00","13:00",0,60,1),
-            ("191","SCAMARDELLA","ADRIAN EZEQUIEL","Logistica","rotativo","08:00","17:00","08:00","13:00",0,60,1),
+    if _count(conn, "colaboradores") == 0:
+        cols = [
+            ("24","GUZMAN","WILFREDO VICTOR","Administración","","08:00","17:30","10:00","14:00",0,90,0,"efectivo"),
+            ("162","BRANDANI","GABRIELA","Administración","","09:00","18:00","10:00","14:00",0,60,0,"efectivo"),
+            ("189","GUTIERREZ FRANCO","NICOLAS","Administración","","08:00","17:00","10:00","14:00",0,60,0,"efectivo"),
+            ("200","SANS","JOAQUIN ALBERTO","Administración","","08:30","17:30","10:00","14:00",0,60,0,"efectivo"),
+            ("103","TEIXIDO","PABLO","Compras","","09:00","18:00","09:00","13:00",0,60,0,"efectivo"),
+            ("25","ATENCIO","MAXIMILIANO","Montecaseros","","09:00","18:00","09:00","13:00",0,60,0,"efectivo"),
+            ("48","GIUNTA","LEONEL ALEJANDRO","Montecaseros","","09:00","18:00","09:00","13:00",0,60,0,"efectivo"),
+            ("62","ARCAR","HERNAN ADOLFO","Montecaseros","","09:00","18:00","09:00","13:00",0,60,0,"efectivo"),
+            ("115","CHAVEZ","MARCELA BELEN","Montecaseros","","09:00","18:00","09:00","13:00",15,60,0,"efectivo"),
+            ("142","MIRANDA","JONATHAN","Montecaseros","","09:00","18:00","09:00","13:00",15,60,0,"efectivo"),
+            ("167","SCHOENFELD MUÑOZ","GIMENA ALEJANDRA","Montecaseros","","09:00","18:00","09:00","13:00",0,60,0,"efectivo"),
+            ("179","FARA","FERNANDO GABRIEL","Montecaseros","","09:00","18:00","09:00","13:00",15,60,0,"efectivo"),
+            ("71","AMILLS","JUAN PABLO","Local calle San Juan","","10:00","19:00","10:00","14:00",15,60,0,"efectivo"),
+            ("180","TEIXIDO","ANDREA","Local calle San Juan","","10:00","19:00","10:00","14:00",15,60,0,"efectivo"),
+            ("190","RODRIGUEZ","DEBORA VANINA","Local calle San Juan","","10:00","19:00","10:00","14:00",15,60,0,"efectivo"),
+            ("52","CASTILLO","GUILLERMO LEONARDO","Logistica","rotativo","08:00","17:00","08:00","13:00",0,60,1,"efectivo"),
+            ("74","CASTRO CORREA","JUAN ALFREDO","Logistica","rotativo","08:00","17:00","08:00","13:00",0,60,1,"efectivo"),
+            ("170","CABAÑEZ","LEONARDO","Logistica","rotativo","08:00","17:00","08:00","13:00",0,60,1,"efectivo"),
+            ("181","FIGUEROA","GABRIEL EDUARDO","Logistica","rotativo","08:00","17:00","08:00","13:00",0,60,1,"efectivo"),
+            ("185","ANDRADA","FERNANDO","Logistica","rotativo","08:00","17:00","08:00","13:00",0,60,1,"efectivo"),
+            ("191","SCAMARDELLA","ADRIAN EZEQUIEL","Logistica","rotativo","08:00","17:00","08:00","13:00",0,60,1,"efectivo"),
         ]
-        c.executemany("""INSERT OR IGNORE INTO colaboradores
-            (legajo,apellido,nombre,sector,turno,entrada,salida,entrada_sab,salida_sab,break_min,almuerzo_min,rotativo)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""", colaboradores)
-
-        # Feriados 2026
-        feriados_2026 = [
+        c.executemany("""INSERT INTO colaboradores
+            (legajo,apellido,nombre,sector,turno,entrada,salida,entrada_sab,salida_sab,
+             break_min,almuerzo_min,rotativo,tipo)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT (legajo) DO NOTHING""", cols)
+        feriados = [
             ("2026-01-01","Año Nuevo"),("2026-02-16","Carnaval"),("2026-02-17","Carnaval"),
             ("2026-03-24","Día Nacional de la Memoria"),("2026-04-02","Día del Veterano"),
             ("2026-04-03","Viernes Santo"),("2026-05-01","Día del Trabajador"),
-            ("2026-05-25","Revolución de Mayo"),("2026-06-15","Paso a la Inmortalidad - Güemes"),
-            ("2026-06-20","Paso a la Inmortalidad - Belgrano"),("2026-07-09","Día de la Independencia"),
-            ("2026-08-17","Paso a la Inmortalidad - San Martín"),("2026-10-12","Diversidad Cultural"),
+            ("2026-05-25","Revolución de Mayo"),("2026-06-15","Güemes"),
+            ("2026-06-20","Belgrano"),("2026-07-09","Día de la Independencia"),
+            ("2026-08-17","San Martín"),("2026-10-12","Diversidad Cultural"),
             ("2026-11-23","Soberanía Nacional"),("2026-12-08","Inmaculada Concepción"),
             ("2026-12-25","Navidad"),
         ]
-        c.executemany("INSERT OR IGNORE INTO feriados (fecha,descripcion) VALUES (?,?)", feriados_2026)
+        c.executemany("INSERT INTO feriados (fecha,descripcion) VALUES (%s,%s) ON CONFLICT (fecha) DO NOTHING", feriados)
         conn.commit()
-
     conn.close()
 
-# ── Funciones de auditoría ────────────────────────────────────────
 def log_auditoria(usuario, accion, tabla=None, registro_id=None, detalle=None):
     try:
         conn = get_conn()
-        # Asegurar que las columnas existen antes de insertar
-        c = conn.cursor()
-        cols = [row[1] for row in c.execute("PRAGMA table_info(auditoria)").fetchall()]
-        if "tabla" not in cols:
-            c.execute("ALTER TABLE auditoria ADD COLUMN tabla TEXT")
-        if "registro_id" not in cols:
-            c.execute("ALTER TABLE auditoria ADD COLUMN registro_id INTEGER")
-        if "detalle" not in cols:
-            c.execute("ALTER TABLE auditoria ADD COLUMN detalle TEXT")
-        conn.execute("""INSERT INTO auditoria (usuario,accion,tabla,registro_id,detalle)
-                        VALUES (?,?,?,?,?)""", (usuario,accion,tabla,registro_id,detalle))
+        c = dict_cursor(conn)
+        c.execute("INSERT INTO auditoria (usuario,accion,tabla,registro_id,detalle) VALUES (%s,%s,%s,%s,%s)",
+                  (usuario,accion,tabla,registro_id,detalle))
         conn.commit()
         conn.close()
-    except Exception:
-        pass  # La auditoría nunca debe frenar el sistema
+    except:
+        pass
 
-# ── Backup ────────────────────────────────────────────────────────
 def hacer_backup():
-    backup_dir = Path(__file__).parent.parent / "backups"
-    backup_dir.mkdir(exist_ok=True)
-    ts  = datetime.now().strftime("%Y%m%d_%H%M%S")
-    dst = backup_dir / f"rrhh_backup_{ts}.db"
-    shutil.copy2(str(DB_PATH), str(dst))
-    # Mantener solo los últimos 10 backups
-    backups = sorted(backup_dir.glob("rrhh_backup_*.db"))
-    for old in backups[:-10]:
-        old.unlink()
-    return str(dst)
+    conn = get_conn()
+    c = dict_cursor(conn)
+    tablas = ["usuarios","colaboradores","marcaciones","novedades","adelantos","feriados"]
+    out = [f"-- Backup OK Accesorios RRHH {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"]
+    for t in tablas:
+        try:
+            c.execute(f"SELECT * FROM {t}")
+            rows = c.fetchall()
+            out.append(f"\n-- {t}: {len(rows)} registros\n")
+        except:
+            pass
+    conn.close()
+    return "".join(out)
+
+DB_PATH = Path("/tmp/rrhh_compat.db")
