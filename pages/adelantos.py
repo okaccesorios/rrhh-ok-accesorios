@@ -93,7 +93,7 @@ def show():
         if st.button("💾 Guardar", type="primary"):
             conn = get_conn()
             conn.execute("""INSERT INTO adelantos (legajo,periodo,tipo,monto,descripcion,creado_por)
-                           VALUES (?,?,?,?,?,?)""",
+                           VALUES (%s,%s,%s,%s,%s,%s)""",
                          (colab[sel], periodo2, tipo, monto or None, detalle or None, u["username"]))
             conn.commit(); conn.close()
             log_auditoria(u["username"],"CREAR_ADELANTO","adelantos",None,f"{colab[sel]} | {tipo} | ${monto}")
