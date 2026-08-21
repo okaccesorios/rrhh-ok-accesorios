@@ -1,8 +1,23 @@
 import streamlit as st
-from utils.database import get_conn, log_auditoria
+from utils.database import get_conn, dict_cursor, log_auditoria
 from utils.auth import usuario_actual
 from utils.importar import importar_vacaciones
 from datetime import date, timedelta
+
+
+def _qry(conn, sql, params=()):
+    c = dict_cursor(conn)
+    c.execute(sql, params)
+    return c.fetchall()
+
+def _qone(conn, sql, params=()):
+    c = dict_cursor(conn)
+    c.execute(sql, params)
+    return c.fetchone()
+
+def _exec(conn, sql, params=()):
+    c = dict_cursor(conn)
+    c.execute(sql, params)
 
 def show():
     st.markdown("""
