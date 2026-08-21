@@ -108,7 +108,7 @@ def show():
                     conn.execute("""INSERT OR REPLACE INTO colaboradores
                         (legajo,apellido,nombre,sector,tipo,entrada,salida,entrada_sab,salida_sab,
                          almuerzo_min,break_min,rotativo,observaciones)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                         (legajo,apellido,nombre,sector,tipo_col,entrada,salida,ent_sab,sal_sab,
                          alm_min,brk_min,int(rotativo),obs))
                     log_auditoria(u["username"],"CREAR_COLABORADOR","colaboradores",None,f"Legajo {legajo}")
