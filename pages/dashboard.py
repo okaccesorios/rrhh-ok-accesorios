@@ -33,8 +33,8 @@ def show():
     else:
         ultimo_dia = date(hoy.year, hoy.month+1, 1) - timedelta(days=1)
 
-    dias_hab_trans = sum(1 for i in range(max(0,(hoy-primer_dia).days+1)) if (primer_dia+timedelta(i)).weekday()<6).weekday()<6)
-    dias_hab_total = sum(1 for i in range(max(0,(ultimo_dia-primer_dia).days+1)) if (primer_dia+timedelta(i)).weekday()<6).weekday()<6)
+    dias_hab_trans = sum(1 for i in range(max(0,(hoy-primer_dia).days+1))
+                         if (primer_dia+timedelta(i)).weekday()<6)
 
     feriados_mes = qry(conn, "SELECT fecha, descripcion FROM feriados WHERE fecha LIKE %s ORDER BY fecha",
                        (f"{periodo}%",))
