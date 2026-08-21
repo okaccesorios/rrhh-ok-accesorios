@@ -1,10 +1,25 @@
 import streamlit as st
 from utils.importar import importar_excel, importar_solicitudes
 from utils.auth import usuario_actual
-from utils.database import get_conn
+from utils.database import get_conn, dict_cursor
 from datetime import date
 
 SECTORES = ["Administración","Compras","Montecaseros","Local calle San Juan","Logistica","Todos / General"]
+
+
+def _qry(conn, sql, params=()):
+    c = dict_cursor(conn)
+    c.execute(sql, params)
+    return c.fetchall()
+
+def _qone(conn, sql, params=()):
+    c = dict_cursor(conn)
+    c.execute(sql, params)
+    return c.fetchone()
+
+def _exec(conn, sql, params=()):
+    c = dict_cursor(conn)
+    c.execute(sql, params)
 
 def show():
     st.markdown("""
