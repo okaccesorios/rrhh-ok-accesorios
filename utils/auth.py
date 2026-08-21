@@ -1,31 +1,34 @@
-"""Autenticación y control de sesión."""
+"""Autenticación y control de sesión — PostgreSQL version."""
 import streamlit as st
-from utils.database import get_conn, hash_pw, log_auditoria
+from utils.database import get_conn, dict_cursor, hash_pw, log_auditoria
 
 PERMISOS = {
-    "admin":   ["dashboard","colaboradores","marcaciones","novedades","adelantos","documentos","usuarios","auditoria","feriados","exportar","backup"],
-    "rrhh":    ["dashboard","colaboradores","marcaciones","novedades","adelantos","documentos","exportar"],
-    "consulta":["dashboard","colaboradores","novedades"],
+    "admin":   ["dashboard","colaboradores","marcaciones","novedades","adelantos",
+                "vacaciones","documentos","usuarios","auditoria","feriados","exportar","backup"],
+    "rrhh":    ["dashboard","colaboradores","marcaciones","novedades","adelantos",
+                "vacaciones","documentos","exportar"],
+    "consulta":["dashboard","colaboradores","novedades","vacaciones"],
 }
 
 def login(username: str, password: str):
-    conn = get_conn()
-    row = conn.execute(
-        "SELECT * FROM usuarios WHERE username=? AND activo=1",
-        (username,)
-    ).fetchone()
-    conn.close()
-    if row and row["password"] == hash_pw(password):
-        st.session_state["usuario"] = dict(row)
-        log_auditoria(username, "LOGIN")
-        return True
+    try:
+        conn = get_conn()
+        c = dict_cursor(conn)
+        c.execute("SELECT * FROM usuarios WHERE username=%s AND activo=1", (username,))
+        row = c.fetchone()
+        conn.close()
+        if row and row["password"] == hash_pw(password):
+            st.session_state["usuario"] = dict(row)
+            log_auditoria(username, "LOGIN")
+            return True
+    except Exception as e:
+        st.error(f"Error de conexión: {e}")
     return False
 
 def logout():
     if "usuario" in st.session_state:
         log_auditoria(st.session_state["usuario"]["username"], "LOGOUT")
-    for k in ["usuario"]:
-        st.session_state.pop(k, None)
+    st.session_state.pop("usuario", None)
 
 def require_login():
     if "usuario" not in st.session_state:
