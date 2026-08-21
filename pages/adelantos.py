@@ -1,5 +1,5 @@
 import streamlit as st
-from utils.database import get_conn, log_auditoria
+from utils.database import get_conn, dict_cursor, log_auditoria
 from utils.auth import usuario_actual
 from utils.importar import importar_solicitudes
 from datetime import date
@@ -7,6 +7,21 @@ from datetime import date
 TIPOS = ["adelanto","descuento_mercaderia","sancion","otro"]
 TIPOS_LABEL = {"adelanto":"💵 Adelanto de sueldo","descuento_mercaderia":"🛍️ Descuento mercadería",
                "sancion":"⚠️ Sanción","otro":"📝 Otro"}
+
+
+def _qry(conn, sql, params=()):
+    c = dict_cursor(conn)
+    c.execute(sql, params)
+    return c.fetchall()
+
+def _qone(conn, sql, params=()):
+    c = dict_cursor(conn)
+    c.execute(sql, params)
+    return c.fetchone()
+
+def _exec(conn, sql, params=()):
+    c = dict_cursor(conn)
+    c.execute(sql, params)
 
 def show():
     st.markdown('<div class="main-header"><div><h1>💰 Adelantos y Descuentos</h1><span>Importá el formulario o cargá manualmente</span></div></div>', unsafe_allow_html=True)
