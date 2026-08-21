@@ -52,7 +52,7 @@ def show():
             SELECT n.*, c.apellido||' '||c.nombre as nombre, c.sector
             FROM novedades n JOIN colaboradores c ON c.legajo=n.legajo
             WHERE n.tipo='Vacaciones'
-            AND (n.fecha_desde LIKE ? OR n.fecha_hasta LIKE ?)
+            AND (n.fecha_desde LIKE %s OR n.fecha_hasta LIKE %s)
             ORDER BY n.fecha_desde
         """
         rows = conn.execute(q, (f"{anio}%", f"{anio}%")).fetchall()
@@ -137,7 +137,7 @@ def show():
                 conn = get_conn()
                 conn.execute("""INSERT INTO novedades
                     (legajo, tipo, fecha_desde, fecha_hasta, descripcion, estado, creado_por, aprobado_por)
-                    VALUES (?,?,?,?,?,'aprobado',?,?)""",
+                    VALUES (%s,%s,%s,%s,%s,'aprobado',%s,%s)""",
                     (legajo, "Vacaciones",
                      fecha_sal.strftime("%Y-%m-%d"),
                      hasta.strftime("%Y-%m-%d"),
