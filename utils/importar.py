@@ -227,10 +227,17 @@ def importar_solicitudes(file_bytes, nombre_archivo: str, usuario: str):
                 errores.append(f"Fila {idx+2}: fecha inválida para {apellido}")
                 continue
             cur2 = dict_cursor(conn)
-            cur2.execute("""INSERT INTO adelantos (legajo,periodo,tipo,monto,descripcion,creado_por)
-                VALUES (%s,%s,%s,%s,%s,%s)""",
-                (legajo, periodo, tipo_adel, monto, f"Importado desde {nombre_archivo}", usuario))
-            adel_nuevos += 1
+            # Verificar duplicado antes de insertar
+            cur2.execute("""SELECT id FROM adelantos
+                WHERE legajo=%s AND periodo=%s AND tipo=%s AND monto=%s""",
+                (legajo, periodo, tipo_adel, monto))
+            if cur2.fetchone():
+                errores.append(f"Fila {idx+2}: duplicado omitido — {apellido} {tipo_adel} ${monto}")
+            else:
+                cur2.execute("""INSERT INTO adelantos (legajo,periodo,tipo,monto,descripcion,creado_por)
+                    VALUES (%s,%s,%s,%s,%s,%s)""",
+                    (legajo, periodo, tipo_adel, monto, f"Importado desde {nombre_archivo}", usuario))
+                adel_nuevos += 1
 
     conn.commit()
     conn.close()
