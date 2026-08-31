@@ -143,8 +143,10 @@ def calcular_periodo(periodo: str):
                         e,ia,fa,s = _parse_marcaciones(raw_sab)
                         entrada_str=e or ""; salida_str=s or ""
                         ing=to_min(e); sal=to_min(s)
-                        if ing is not None and sal is not None and sal>SABADO_LIMITE_EXTRA:
-                            he100 += sal-max(ing, SABADO_LIMITE_EXTRA)
+                        # Usar salida_sab del colaborador como límite de HE
+                        lim_sab = to_min(cfg.get("salida_sab") or "13:00")
+                        if ing is not None and sal is not None and lim_sab and sal > lim_sab:
+                            he100 += sal - max(ing, lim_sab)
                         dias_trab += 1
                         estado = "Trabajó Sáb"
                     else:
@@ -174,8 +176,10 @@ def calcular_periodo(periodo: str):
                     else:
                         estado = "Trabajó"
 
-                    if ing is not None and sal is not None and sal>sal_cfg:
-                        he_neta = max(0, sal-sal_cfg-tardanza_min)
+                    # Usar salida del colaborador como límite exacto de HE
+                    lim_he = to_min(cfg.get("salida") or "18:00")
+                    if ing is not None and sal is not None and lim_he and sal > lim_he:
+                        he_neta = max(0, sal-lim_he-tardanza_min)
                         he50 += he_neta
 
             detalle.append({
