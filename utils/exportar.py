@@ -127,7 +127,7 @@ def generar_excel(periodo: str) -> bytes:
         ("D",11,"Fecha"),("E",6,"Día"),("F",20,"Estado"),
         ("G",8,"Entrada"),("H",10,"Ini.\nAlmuerzo"),
         ("I",10,"Fin\nAlmuerzo"),("J",8,"Salida"),
-        ("K",10,"Tardanza"),("L",26,"Novedad / Obs."),
+        ("K",10,"Tardanza"),("L",10,"Hs\nTrabajadas"),("M",10,"Diff\n8hs"),("N",26,"Novedad / Obs."),
     ]
     for col, w, lbl in hdrs2:
         ws2.column_dimensions[col].width = w
@@ -147,17 +147,61 @@ def generar_excel(periodo: str) -> bytes:
             bg = ESTADOS_COLOR.get(dd["estado"], WHITE)
             if any(k in dd["estado"] for k in ["Viaje","Licencia","Vacaciones","ART","Home office"]):
                 bg = "E8F5E9"
+            # Calcular horas trabajadas efectivas
+            def _tm(hhmm):
+                if not hhmm or str(hhmm).strip() in ("","-"): return None
+                try:
+                    h,m = str(hhmm).strip().split(":")
+                    return int(h)*60+int(m)
+                except: return None
+            def _fmt(mins):
+                if mins is None: return ""
+                neg = mins < 0
+                h,m = divmod(abs(mins),60)
+                return f"{'-' if neg else ''}{h}h {m:02d}m"
+
+            t_ent = _tm(dd.get("entrada",""))
+            t_sal = _tm(dd.get("salida",""))
+            t_ini = _tm(dd.get("ini_almuerzo",""))
+            t_fin = _tm(dd.get("fin_almuerzo",""))
+
+            hs_trab = ""
+            diff_8h = ""
+            if t_ent is not None and t_sal is not None:
+                bruto = t_sal - t_ent
+                # Descontar tiempo de almuerzo real si hay marcaciones
+                if t_ini is not None and t_fin is not None:
+                    alm_real = t_fin - t_ini
+                else:
+                    # Usar almuerzo configurado del colaborador
+                    alm_real = int(emp.get("alm_min", 60)) if emp.get("alm_min") else 60
+                efectivo = bruto - alm_real
+                hs_trab  = _fmt(efectivo)
+                diff     = efectivo - 480  # 480 min = 8 horas
+                if dd["estado"] not in ("Feriado","Sábado libre","Sábado HO","Ausente","Domingo"):
+                    diff_8h = _fmt(diff)
+
             vals = [
                 emp["legajo"], emp["nombre"], emp["sector"],
                 dd["fecha"].strftime("%d/%m/%Y"), dd["dia"], dd["estado"],
                 dd.get("entrada",""), dd.get("ini_almuerzo",""),
                 dd.get("fin_almuerzo",""), dd.get("salida",""),
-                dd["tardanza"], dd.get("novedad",""),
+                dd["tardanza"], hs_trab, diff_8h, dd.get("novedad",""),
             ]
             for ci, val in enumerate(vals, 1):
                 c = ws2.cell(row=row2, column=ci, value=val)
-                c.fill = _fc(bg); c.border = _bd(); c.font = _ft(sz=8)
-                c.alignment = _al("left" if ci in (2,3,6,12) else "center")
+                c.fill = _fc(bg); c.border = _bd()
+                # Colorear columna diff: rojo=debe horas, verde=a favor
+                if ci == 13 and val and val != "":
+                    if val.startswith("-"):
+                        c.font = _ft(sz=8, bold=True, color="C00000")
+                    elif val not in ("","0h 00m"):
+                        c.font = _ft(sz=8, bold=True, color="375623")
+                    else:
+                        c.font = _ft(sz=8)
+                else:
+                    c.font = _ft(sz=8)
+                c.alignment = _al("left" if ci in (2,3,6,14) else "center")
             ws2.row_dimensions[row2].height = 13
             row2 += 1
 
@@ -217,6 +261,67 @@ def generar_excel(periodo: str) -> bytes:
             c.fill = _fc(LGRY if r%2==0 else WHITE); c.border = _bd(); c.font = _ft(sz=9)
             c.alignment = _al("left" if ci in (2,3) else "center")
         r += 1
+
+    # ══ 5. RESUMEN DEBE HORAS ══════════════════════════════════
+    ws5 = wb.create_sheet("Debe Horas")
+    ws5.sheet_view.showGridLines = False
+    ws5.merge_cells("A1:F1")
+    c = ws5["A1"]; c.value = f"OK ACCESORIOS  ·  HORAS TRABAJADAS VS 8HS  ·  {mes_str.upper()}"
+    c.font = _ft(True,11,WHITE); c.fill = _fc(DARK); c.alignment = _al()
+    for col,w,lbl in [("A",8,"Legajo"),("B",24,"Nombre"),("C",16,"Sector"),
+                       ("D",12,"Total Hs Trab."),("E",12,"Diff vs 8hs/día"),("F",20,"Estado")]:
+        ws5.column_dimensions[col].width = w
+        c = ws5[f"{col}2"]; c.value = lbl
+        c.font = _ft(True,8,WHITE); c.fill = _fc(BLUE); c.alignment = _al(); c.border = _bd()
+
+    def _tm5(hhmm):
+        if not hhmm or str(hhmm).strip() in ("","-"): return None
+        try:
+            h,m = str(hhmm).strip().split(":")
+            return int(h)*60+int(m)
+        except: return None
+
+    def _fmt5(mins):
+        if mins is None: return ""
+        neg = mins < 0
+        h,m = divmod(abs(mins),60)
+        return f"{'-' if neg else '+'}{h}h {m:02d}m"
+
+    r5 = 3
+    SKIP_ESTADOS = {"Feriado","Sábado libre","Sábado HO","Ausente","Domingo","Ausente Sáb",
+                    "Vacaciones","Licencia por enfermedad","ART","Viaje / visita clientes"}
+    for emp in resumen:
+        total_ef = 0
+        dias_con_marc = 0
+        for dd in emp["detalle"]:
+            if dd["estado"] in SKIP_ESTADOS: continue
+            t_ent = _tm5(dd.get("entrada",""))
+            t_sal = _tm5(dd.get("salida",""))
+            t_ini = _tm5(dd.get("ini_almuerzo",""))
+            t_fin = _tm5(dd.get("fin_almuerzo",""))
+            if t_ent is not None and t_sal is not None:
+                bruto = t_sal - t_ent
+                alm   = (t_fin-t_ini) if (t_ini and t_fin) else 60
+                total_ef += bruto - alm
+                dias_con_marc += 1
+
+        if dias_con_marc == 0: continue
+        esperado = dias_con_marc * 480
+        diff     = total_ef - esperado
+        estado_r = "✅ OK" if diff >= 0 else f"⚠️ DEBE {_fmt5(diff).replace('-','')}"
+        bg5 = "E2EFDA" if diff >= 0 else "FCE4D6"
+        color5 = "375623" if diff >= 0 else "C00000"
+
+        for ci,val in enumerate([emp["legajo"],emp["nombre"],emp["sector"],
+                                  _fmt5(total_ef).replace("+",""),
+                                  _fmt5(diff), estado_r],1):
+            c = ws5.cell(row=r5,column=ci,value=val)
+            c.fill = _fc(bg5 if ci>=4 else (LGRY if r5%2==0 else WHITE))
+            c.border = _bd()
+            c.font = _ft(sz=9, bold=(ci==6), color=color5 if ci>=4 else "000000")
+            c.alignment = _al("left" if ci in (2,3) else "center")
+        ws5.row_dimensions[r5].height = 15
+        r5 += 1
 
     buf = io.BytesIO()
     wb.save(buf)
