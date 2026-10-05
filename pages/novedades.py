@@ -4,7 +4,8 @@ from utils.auth import usuario_actual, puede
 from datetime import date
 
 TIPOS = ["Viaje / visita clientes","Licencia por enfermedad","Vacaciones",
-         "ART","Home office autorizado","Licencia sin goce de sueldo","Otro"]
+         "ART","Home office autorizado","Licencia sin goce de sueldo",
+         "Sábado HO","Sábado trabajo","Otro"]
 
 def _qry(conn, sql, p=()):
     c = dict_cursor(conn); c.execute(sql, p); return c.fetchall()
