@@ -169,17 +169,28 @@ def generar_excel(periodo: str) -> bytes:
             diff_8h = ""
             if t_ent is not None and t_sal is not None:
                 bruto = t_sal - t_ent
-                # Descontar tiempo de almuerzo real si hay marcaciones
-                if t_ini is not None and t_fin is not None:
-                    alm_real = t_fin - t_ini
+                es_sab_trab = dd["estado"] in ("Trabajó Sáb",)
+                if es_sab_trab:
+                    # Sábados: sin almuerzo, comparar contra horario sábado
+                    efectivo = bruto
+                    hs_trab  = _fmt(efectivo)
+                    # Esperado sábado según horario cargado en colaborador
+                    ent_sab_c = _tm(emp.get("entrada_sab","08:00") or "08:00")
+                    sal_sab_c = _tm(emp.get("salida_sab","13:00") or "13:00")
+                    esp_sab   = (sal_sab_c - ent_sab_c) if (ent_sab_c and sal_sab_c) else 240
+                    diff      = efectivo - esp_sab
+                    diff_8h   = _fmt(diff)
                 else:
-                    # Usar almuerzo configurado del colaborador
-                    alm_real = int(emp.get("alm_min", 60)) if emp.get("alm_min") else 60
-                efectivo = bruto - alm_real
-                hs_trab  = _fmt(efectivo)
-                diff     = efectivo - 480  # 480 min = 8 horas
-                if dd["estado"] not in ("Feriado","Sábado libre","Sábado HO","Ausente","Domingo"):
-                    diff_8h = _fmt(diff)
+                    # Días hábiles: descontar almuerzo real o configurado
+                    if t_ini is not None and t_fin is not None:
+                        alm_real = t_fin - t_ini
+                    else:
+                        alm_real = int(emp.get("alm_min", 60)) if emp.get("alm_min") else 60
+                    efectivo = bruto - alm_real
+                    hs_trab  = _fmt(efectivo)
+                    diff     = efectivo - 480
+                    if dd["estado"] not in ("Feriado","Sábado libre","Sábado HO","Ausente","Domingo"):
+                        diff_8h = _fmt(diff)
 
             vals = [
                 emp["legajo"], emp["nombre"], emp["sector"],
@@ -290,8 +301,10 @@ def generar_excel(periodo: str) -> bytes:
     r5 = 3
     SKIP_ESTADOS = {"Feriado","Sábado libre","Sábado HO","Ausente","Domingo","Ausente Sáb",
                     "Vacaciones","Licencia por enfermedad","ART","Viaje / visita clientes"}
+    SAB_ESTADOS  = {"Trabajó Sáb"}
     for emp in resumen:
         total_ef = 0
+        esperado = 0
         dias_con_marc = 0
         for dd in emp["detalle"]:
             if dd["estado"] in SKIP_ESTADOS: continue
@@ -301,13 +314,21 @@ def generar_excel(periodo: str) -> bytes:
             t_fin = _tm5(dd.get("fin_almuerzo",""))
             if t_ent is not None and t_sal is not None:
                 bruto = t_sal - t_ent
-                alm   = (t_fin-t_ini) if (t_ini and t_fin) else 60
-                total_ef += bruto - alm
+                # Sábados: sin descuento de almuerzo, esperado = horario sáb configurado
+                if dd["estado"] in SAB_ESTADOS:
+                    total_ef += bruto
+                    # Esperado sábado = salida_sab - entrada_sab del colaborador
+                    ent_sab = _tm5(emp.get("entrada_sab","08:00") or "08:00")
+                    sal_sab = _tm5(emp.get("salida_sab","13:00") or "13:00")
+                    esperado += (sal_sab - ent_sab) if (ent_sab and sal_sab) else 240
+                else:
+                    alm = (t_fin-t_ini) if (t_ini and t_fin) else 60
+                    total_ef += bruto - alm
+                    esperado += 480  # 8hs días hábiles
                 dias_con_marc += 1
 
         if dias_con_marc == 0: continue
-        esperado = dias_con_marc * 480
-        diff     = total_ef - esperado
+        diff = total_ef - esperado
         estado_r = "✅ OK" if diff >= 0 else f"⚠️ DEBE {_fmt5(diff).replace('-','')}"
         bg5 = "E2EFDA" if diff >= 0 else "FCE4D6"
         color5 = "375623" if diff >= 0 else "C00000"
