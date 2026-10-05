@@ -10,9 +10,20 @@ def _parse_fecha(val):
         return val.date() if isinstance(val, datetime) else val
     if isinstance(val, str):
         val = val.strip()
-        for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d", "%m/%d/%Y"):
+        # Formato argentino D/M/YYYY tiene prioridad
+        # Ej: 1/10/2026 = 1 de octubre, NO 10 de enero
+        for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d"):
             try:
                 return datetime.strptime(val, fmt).date()
+            except: pass
+        # Último recurso: intentar con separador /
+        partes = val.replace("-","/").split("/")
+        if len(partes) == 3:
+            try:
+                # Asumir D/M/YYYY
+                d, m, y = int(partes[0]), int(partes[1]), int(partes[2])
+                if y < 100: y += 2000
+                return date(y, m, d)
             except: pass
     return None
 
