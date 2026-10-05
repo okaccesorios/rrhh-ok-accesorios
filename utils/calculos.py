@@ -1,14 +1,17 @@
 """
 Motor de cálculo del Papel de Trabajo — PostgreSQL version
+v3.3 — Sábados por novedades, tardanzas de almuerzo, horarios del colaborador
 """
 from datetime import date, timedelta
 import calendar
 from utils.database import get_conn, dict_cursor
 
-SABADO_LIMITE_EXTRA = 13 * 60
 DIAS_ES = {"Mon":"Lun","Tue":"Mar","Wed":"Mié","Thu":"Jue","Fri":"Vie","Sat":"Sáb","Sun":"Dom"}
-SAB_HOME_OFFICE = {"162","189"}
-SAB_LIBRE = {"24"}
+
+# Legajos con sábado HO por defecto
+SAB_HOME_OFFICE_DEFAULT = {"162","189"}  # Brandani, Gutierrez Franco
+# Wilfredo (24): si marcó = trabajó, si no = libre
+SAB_LIBRE_SI_NO_MARCA = {"24"}
 
 def to_min(hhmm):
     if not hhmm: return None
@@ -49,7 +52,7 @@ def calcular_periodo(periodo: str):
     conn = get_conn()
     cur = dict_cursor(conn)
 
-    # Feriados del mes
+    # Feriados
     cur.execute("SELECT fecha FROM feriados WHERE fecha LIKE %s", (f"{periodo}%",))
     feriados = set()
     for row in cur.fetchall():
@@ -72,26 +75,25 @@ def calcular_periodo(periodo: str):
             novedades_db.setdefault(leg, {})[d] = {"tipo": row["tipo"], "obs": row["descripcion"] or ""}
             d += timedelta(days=1)
 
-    # Adelantos del período
+    # Adelantos
     cur.execute("SELECT legajo, tipo, monto, descripcion FROM adelantos WHERE periodo=%s", (periodo,))
     adelantos_db = {}
     for row in cur.fetchall():
         adelantos_db.setdefault(str(row["legajo"]), []).append(dict(row))
 
-    # Colaboradores activos
+    # Colaboradores
     cur.execute("SELECT * FROM colaboradores WHERE activo=1 ORDER BY sector, apellido")
     colaboradores = cur.fetchall()
 
-    # Marcaciones del mes completo
-    cur.execute("""SELECT legajo, fecha, horas_raw, ingreso, egreso
-                   FROM marcaciones WHERE fecha LIKE %s""", (f"{periodo}%",))
+    # Marcaciones
+    cur.execute("SELECT legajo, fecha, horas_raw, ingreso, egreso FROM marcaciones WHERE fecha LIKE %s",
+                (f"{periodo}%",))
     marc_dict = {}
     for m in cur.fetchall():
         marc_dict.setdefault(str(m["legajo"]), {})[date.fromisoformat(m["fecha"])] = m
 
     conn.close()
 
-    # Rango mes completo
     primer_dia = date(anio, mes, 1)
     ultimo_dia = date(anio, mes, calendar.monthrange(anio, mes)[1])
 
@@ -103,60 +105,90 @@ def calcular_periodo(periodo: str):
         novs   = novedades_db.get(legajo, {})
         adels  = adelantos_db.get(legajo, [])
 
+        ent_cfg     = to_min(cfg.get("entrada") or "09:00")
+        sal_cfg     = to_min(cfg.get("salida")  or "18:00")
+        sal_sab_cfg = to_min(cfg.get("salida_sab") or "13:00")
+        alm_min     = int(cfg.get("almuerzo_min") or 60)
+        tolerancia  = 5
+
         dias_trab=dias_aus=dias_feriado=dias_home=0
         he50=he100=0
         tard_n=tard_min_total=0
+        tard_alm_n=tard_alm_min=0
         detalle=[]
 
         d = primer_dia
         while d <= ultimo_dia:
-            dow = d.weekday()
-            es_sab = (dow==5)
-            es_dom = (dow==6)
-            es_feriado = d in feriados
+            dow      = d.weekday()
+            es_sab   = (dow==5)
+            es_dom   = (dow==6)
+            es_fer   = d in feriados
             fichadas = marc.get(d)
             nov_dia  = novs.get(d)
 
             entrada_str=ini_alm_str=fin_alm_str=salida_str=""
             ing=sal=None
-            tardanza_min=0
+            tardanza_min=tard_alm_dia=0
             estado=""
 
             if es_dom:
                 d += timedelta(days=1)
                 continue
 
-            if es_feriado:
-                # Feriado: siempre figura como Feriado, no como trabajado
+            if es_fer:
                 dias_feriado += 1
                 estado = "Feriado"
 
             elif es_sab:
-                if legajo in SAB_HOME_OFFICE:
+                if nov_dia:
+                    tipo_nov = nov_dia["tipo"]
+                    if tipo_nov == "Sábado HO":
+                        dias_home += 1
+                        estado = "Sábado HO"
+                    elif tipo_nov == "Sábado trabajo":
+                        raw_sab = fichadas["horas_raw"] if fichadas else None
+                        if raw_sab and str(raw_sab).strip() not in ("","nan","None"):
+                            e,ia,fa,s = _parse_marcaciones(raw_sab)
+                            entrada_str=e or ""; salida_str=s or ""
+                            ing=to_min(e); sal=to_min(s)
+                            if ing is not None and sal is not None and sal_sab_cfg and sal>sal_sab_cfg:
+                                he100 += sal-max(ing,sal_sab_cfg)
+                            dias_trab += 1
+                        estado = "Trabajó Sáb"
+                    else:
+                        estado = tipo_nov
+
+                elif legajo in SAB_LIBRE_SI_NO_MARCA:
+                    raw_sab = fichadas["horas_raw"] if fichadas else None
+                    if raw_sab and str(raw_sab).strip() not in ("","nan","None"):
+                        e,ia,fa,s = _parse_marcaciones(raw_sab)
+                        entrada_str=e or ""; salida_str=s or ""
+                        ing=to_min(e); sal=to_min(s)
+                        if ing is not None and sal is not None and sal_sab_cfg and sal>sal_sab_cfg:
+                            he100 += sal-max(ing,sal_sab_cfg)
+                        dias_trab += 1
+                        estado = "Trabajó Sáb"
+                    else:
+                        estado = "Sábado libre"
+
+                elif legajo in SAB_HOME_OFFICE_DEFAULT:
                     dias_home += 1
                     estado = "Sábado HO"
-                elif legajo in SAB_LIBRE:
-                    estado = "Sábado libre"
+
                 else:
                     raw_sab = fichadas["horas_raw"] if fichadas else None
                     if raw_sab and str(raw_sab).strip() not in ("","nan","None"):
                         e,ia,fa,s = _parse_marcaciones(raw_sab)
                         entrada_str=e or ""; salida_str=s or ""
                         ing=to_min(e); sal=to_min(s)
-                        # Usar salida_sab del colaborador como límite de HE
-                        lim_sab = to_min(cfg.get("salida_sab") or "13:00")
-                        if ing is not None and sal is not None and lim_sab and sal > lim_sab:
-                            he100 += sal - max(ing, lim_sab)
+                        if ing is not None and sal is not None and sal_sab_cfg and sal>sal_sab_cfg:
+                            he100 += sal-max(ing,sal_sab_cfg)
                         dias_trab += 1
                         estado = "Trabajó Sáb"
                     else:
-                        estado = nov_dia["tipo"] if nov_dia else "Ausente Sáb"
+                        estado = "Ausente Sáb"
 
             else:
-                ent_cfg = to_min(cfg.get("entrada") or "09:00")
-                sal_cfg = to_min(cfg.get("salida")  or "18:00")
-                tolerancia = 5
-
                 raw_dia = fichadas["horas_raw"] if fichadas else None
                 if not raw_dia or str(raw_dia).strip() in ("","nan","None"):
                     estado = nov_dia["tipo"] if nov_dia else "Ausente"
@@ -166,8 +198,10 @@ def calcular_periodo(periodo: str):
                     entrada_str=e or ""; ini_alm_str=ia or ""
                     fin_alm_str=fa or ""; salida_str=s or ""
                     ing=to_min(e); sal=to_min(s)
+                    ini_alm_min=to_min(ia); fin_alm_min=to_min(fa)
                     dias_trab += 1
 
+                    # Tardanza entrada
                     if ing and ent_cfg and ing > ent_cfg+tolerancia:
                         tardanza_min   = ing-ent_cfg
                         tard_n        += 1
@@ -176,10 +210,20 @@ def calcular_periodo(periodo: str):
                     else:
                         estado = "Trabajó"
 
-                    # Usar salida del colaborador como límite exacto de HE
-                    lim_he = to_min(cfg.get("salida") or "18:00")
-                    if ing is not None and sal is not None and lim_he and sal > lim_he:
-                        he_neta = max(0, sal-lim_he-tardanza_min)
+                    # Tardanza almuerzo
+                    if ini_alm_min and fin_alm_min and alm_min:
+                        tiempo_alm = fin_alm_min - ini_alm_min
+                        exceso_alm = tiempo_alm - alm_min
+                        if exceso_alm > tolerancia:
+                            tard_alm_dia  = exceso_alm
+                            tard_alm_n   += 1
+                            tard_alm_min += exceso_alm
+                            if estado == "Trabajó":
+                                estado = "Tard. almuerzo"
+
+                    # Horas extra
+                    if ing is not None and sal is not None and sal_cfg and sal>sal_cfg:
+                        he_neta = max(0, sal-sal_cfg-tardanza_min)
                         he50 += he_neta
 
             detalle.append({
@@ -188,6 +232,7 @@ def calcular_periodo(periodo: str):
                 "entrada":entrada_str, "ini_almuerzo":ini_alm_str,
                 "fin_almuerzo":fin_alm_str, "salida":salida_str,
                 "tardanza":fmt_dur(tardanza_min) if tardanza_min else "-",
+                "tard_alm":fmt_dur(tard_alm_dia) if tard_alm_dia else "-",
                 "novedad":nov_dia.get("obs","") if nov_dia else "",
             })
             d += timedelta(days=1)
@@ -202,6 +247,7 @@ def calcular_periodo(periodo: str):
             "dias_trab":dias_trab, "dias_aus":dias_aus,
             "dias_feriado":dias_feriado, "dias_home":dias_home,
             "tard_n":tard_n, "tard_min":tard_min_total,
+            "tard_alm_n":tard_alm_n, "tard_alm_min":tard_alm_min,
             "he50":he50, "he100":he100,
             "dias_lic":cnt("Licencia por enfermedad"),
             "dias_vac":cnt("Vacaciones"),
