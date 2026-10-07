@@ -190,9 +190,15 @@ def calcular_periodo(periodo: str):
 
             else:
                 raw_dia = fichadas["horas_raw"] if fichadas else None
+                es_flex = bool(cfg.get("horario_flexible", 0))
+
                 if not raw_dia or str(raw_dia).strip() in ("","nan","None"):
-                    estado = nov_dia["tipo"] if nov_dia else "Ausente"
-                    dias_aus += 1
+                    if es_flex:
+                        # Horario flexible: si no marcó ese día simplemente no vino
+                        estado = "No asistió"
+                    else:
+                        estado = nov_dia["tipo"] if nov_dia else "Ausente"
+                        dias_aus += 1
                 else:
                     e,ia,fa,s = _parse_marcaciones(raw_dia)
                     entrada_str=e or ""; ini_alm_str=ia or ""
@@ -201,30 +207,34 @@ def calcular_periodo(periodo: str):
                     ini_alm_min=to_min(ia); fin_alm_min=to_min(fa)
                     dias_trab += 1
 
-                    # Tardanza entrada
-                    if ing and ent_cfg and ing > ent_cfg+tolerancia:
-                        tardanza_min   = ing-ent_cfg
-                        tard_n        += 1
-                        tard_min_total += tardanza_min
-                        estado = "Tardanza"
-                    else:
+                    if es_flex:
+                        # Horario flexible: solo registrar, sin tardanzas ni HE
                         estado = "Trabajó"
+                    else:
+                        # Tardanza entrada
+                        if ing and ent_cfg and ing > ent_cfg+tolerancia:
+                            tardanza_min   = ing-ent_cfg
+                            tard_n        += 1
+                            tard_min_total += tardanza_min
+                            estado = "Tardanza"
+                        else:
+                            estado = "Trabajó"
 
-                    # Tardanza almuerzo
-                    if ini_alm_min and fin_alm_min and alm_min:
-                        tiempo_alm = fin_alm_min - ini_alm_min
-                        exceso_alm = tiempo_alm - alm_min
-                        if exceso_alm > tolerancia:
-                            tard_alm_dia  = exceso_alm
-                            tard_alm_n   += 1
-                            tard_alm_min += exceso_alm
-                            if estado == "Trabajó":
-                                estado = "Tard. almuerzo"
+                        # Tardanza almuerzo
+                        if ini_alm_min and fin_alm_min and alm_min:
+                            tiempo_alm = fin_alm_min - ini_alm_min
+                            exceso_alm = tiempo_alm - alm_min
+                            if exceso_alm > tolerancia:
+                                tard_alm_dia  = exceso_alm
+                                tard_alm_n   += 1
+                                tard_alm_min += exceso_alm
+                                if estado == "Trabajó":
+                                    estado = "Tard. almuerzo"
 
-                    # Horas extra
-                    if ing is not None and sal is not None and sal_cfg and sal>sal_cfg:
-                        he_neta = max(0, sal-sal_cfg-tardanza_min)
-                        he50 += he_neta
+                        # Horas extra
+                        if ing is not None and sal is not None and sal_cfg and sal>sal_cfg:
+                            he_neta = max(0, sal-sal_cfg-tardanza_min)
+                            he50 += he_neta
 
             detalle.append({
                 "fecha":d, "dia":DIAS_ES.get(d.strftime("%a"),d.strftime("%a")),
