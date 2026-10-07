@@ -82,9 +82,10 @@ def init_db():
 
     # Datos iniciales
     # Migración: agregar horario_flexible si no existe
-    cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='colaboradores' AND column_name='horario_flexible'")
-    if not cur.fetchone():
-        cur.execute("ALTER TABLE colaboradores ADD COLUMN horario_flexible INTEGER DEFAULT 0")
+    _mc = conn.cursor()
+    _mc.execute("SELECT column_name FROM information_schema.columns WHERE table_name='colaboradores' AND column_name='horario_flexible'")
+    if not _mc.fetchone():
+        _mc.execute("ALTER TABLE colaboradores ADD COLUMN horario_flexible INTEGER DEFAULT 0")
         conn.commit()
 
     if _count(conn, "usuarios") == 0:
