@@ -94,6 +94,9 @@ def show():
             alm_min  = st.number_input("Almuerzo (min)", value=int(datos.get("almuerzo_min",60)), min_value=0)
             brk_min  = st.number_input("Break (min)",    value=int(datos.get("break_min",0)),    min_value=0)
             rotativo = st.checkbox("Turno rotativo",     value=bool(datos.get("rotativo",0)))
+            flex     = st.checkbox("Horario flexible (sin control tardanzas/HE)",
+                                   value=bool(datos.get("horario_flexible",0)),
+                                   help="Para personal de limpieza u otros con horario variable")
 
         obs = st.text_area("Observaciones", value=datos.get("observaciones","") or "")
 
@@ -105,12 +108,12 @@ def show():
                 if sel == "(Nuevo)":
                     c.execute("""INSERT INTO colaboradores
                         (legajo,apellido,nombre,sector,tipo,entrada,salida,entrada_sab,salida_sab,
-                         almuerzo_min,break_min,rotativo,observaciones)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                         almuerzo_min,break_min,rotativo,horario_flexible,observaciones)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                         ON CONFLICT (legajo) DO UPDATE SET
                         apellido=EXCLUDED.apellido, nombre=EXCLUDED.nombre""",
                         (legajo,apellido,nombre,sector,tipo_col,entrada,salida,
-                         ent_sab,sal_sab,alm_min,brk_min,int(rotativo),obs))
+                         ent_sab,sal_sab,alm_min,brk_min,int(rotativo),int(flex),obs))
                     log_auditoria(u["username"],"CREAR_COLABORADOR","colaboradores",None,f"Legajo {legajo}")
                 else:
                     c.execute("""UPDATE colaboradores SET apellido=%s,nombre=%s,sector=%s,tipo=%s,
