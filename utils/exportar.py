@@ -127,7 +127,7 @@ def generar_excel(periodo: str) -> bytes:
         ("D",11,"Fecha"),("E",6,"Día"),("F",20,"Estado"),
         ("G",8,"Entrada"),("H",10,"Ini.\nAlmuerzo"),
         ("I",10,"Fin\nAlmuerzo"),("J",8,"Salida"),
-        ("K",10,"Tardanza"),("L",10,"Hs\nTrabajadas"),("M",10,"Diff\n8hs"),("N",26,"Novedad / Obs."),
+        ("K",10,"Tardanza"),("L",10,"Hs\nTrabajadas"),("M",10,"Diff\n8hs"),("N",18,"Novedad / Obs."),("O",22,"Alerta RRHH"),
     ]
     for col, w, lbl in hdrs2:
         ws2.column_dimensions[col].width = w
@@ -192,12 +192,29 @@ def generar_excel(periodo: str) -> bytes:
                     if dd["estado"] not in ("Feriado","Sábado libre","Sábado HO","Ausente","Domingo"):
                         diff_8h = _fmt(diff)
 
+            # Alerta RRHH basada en estado
+            alerta_rrhh = ""
+            if dd["estado"] == "Ausente":
+                # Contar ausencias acumuladas hasta esta fecha
+                aus_hasta = sum(1 for d2 in emp["detalle"]
+                               if d2["estado"] == "Ausente" and d2["fecha"] <= dd["fecha"])
+                if aus_hasta >= 3:
+                    alerta_rrhh = "🔴 APERCIBIMIENTO"
+                else:
+                    alerta_rrhh = "📧 Enviar mail"
+            elif dd["estado"] == "Tardanza":
+                tard_hasta = sum(1 for d2 in emp["detalle"]
+                                if d2["estado"] == "Tardanza" and d2["fecha"] <= dd["fecha"])
+                tard_min_hasta = emp["tard_min"]
+                h, m = divmod(tard_min_hasta, 60)
+                alerta_rrhh = f"⏰ {tard_hasta} tard. acum. ({h}h {m:02d}m)"
+
             vals = [
                 emp["legajo"], emp["nombre"], emp["sector"],
                 dd["fecha"].strftime("%d/%m/%Y"), dd["dia"], dd["estado"],
                 dd.get("entrada",""), dd.get("ini_almuerzo",""),
                 dd.get("fin_almuerzo",""), dd.get("salida",""),
-                dd["tardanza"], hs_trab, diff_8h, dd.get("novedad",""),
+                dd["tardanza"], hs_trab, diff_8h, dd.get("novedad",""), alerta_rrhh,
             ]
             for ci, val in enumerate(vals, 1):
                 c = ws2.cell(row=row2, column=ci, value=val)
@@ -212,7 +229,7 @@ def generar_excel(periodo: str) -> bytes:
                         c.font = _ft(sz=8)
                 else:
                     c.font = _ft(sz=8)
-                c.alignment = _al("left" if ci in (2,3,6,14) else "center")
+                c.alignment = _al("left" if ci in (2,3,6,14,15) else "center")
             ws2.row_dimensions[row2].height = 13
             row2 += 1
 
