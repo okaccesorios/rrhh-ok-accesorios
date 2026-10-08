@@ -95,7 +95,22 @@ def calcular_periodo(periodo: str):
     conn.close()
 
     primer_dia = date(anio, mes, 1)
-    ultimo_dia = date(anio, mes, calendar.monthrange(anio, mes)[1])
+    ultimo_dia_mes = date(anio, mes, calendar.monthrange(anio, mes)[1])
+
+    # Detectar el último día con marcaciones importadas
+    # Solo procesamos hasta ese día — los días futuros no se muestran
+    fechas_con_marc = set()
+    for marc_emp in marc_dict.values():
+        fechas_con_marc.update(marc_emp.keys())
+
+    if fechas_con_marc:
+        ultimo_con_datos = max(fechas_con_marc)
+        # No pasar del último día del mes
+        ultimo_dia = min(ultimo_con_datos, ultimo_dia_mes)
+    else:
+        # Sin marcaciones: mostrar solo hasta hoy
+        from datetime import date as date_hoy
+        ultimo_dia = min(date_hoy.today(), ultimo_dia_mes)
 
     resumen = []
     for col in colaboradores:
