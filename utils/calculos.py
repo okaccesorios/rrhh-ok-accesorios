@@ -47,7 +47,7 @@ def _parse_marcaciones(horas_raw):
     if len(validas)>=4: fin_alm=validas[2]
     return entrada, ini_alm, fin_alm, salida
 
-def calcular_periodo(periodo: str):
+def calcular_periodo(periodo: str, fecha_corte: str = None):
     anio, mes = int(periodo[:4]), int(periodo[5:7])
     conn = get_conn()
     cur = dict_cursor(conn)
@@ -103,14 +103,19 @@ def calcular_periodo(periodo: str):
     for marc_emp in marc_dict.values():
         fechas_con_marc.update(marc_emp.keys())
 
-    if fechas_con_marc:
+    if fecha_corte:
+        # Si se especifica fecha de corte manual, usarla
+        try:
+            ultimo_dia = min(date.fromisoformat(fecha_corte), ultimo_dia_mes)
+        except:
+            ultimo_dia = ultimo_dia_mes
+    elif fechas_con_marc:
+        # Cortar en el último día con marcaciones
         ultimo_con_datos = max(fechas_con_marc)
-        # No pasar del último día del mes
         ultimo_dia = min(ultimo_con_datos, ultimo_dia_mes)
     else:
         # Sin marcaciones: mostrar solo hasta hoy
-        from datetime import date as date_hoy
-        ultimo_dia = min(date_hoy.today(), ultimo_dia_mes)
+        ultimo_dia = min(date.today(), ultimo_dia_mes)
 
     resumen = []
     for col in colaboradores:
