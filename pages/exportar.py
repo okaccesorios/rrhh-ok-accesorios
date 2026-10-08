@@ -2,7 +2,7 @@ import streamlit as st
 from utils.exportar import generar_excel
 from utils.database import log_auditoria
 from utils.auth import usuario_actual
-from datetime import date
+from datetime import date, timedelta
 
 MESES_ES = {1:"Enero",2:"Febrero",3:"Marzo",4:"Abril",5:"Mayo",6:"Junio",
             7:"Julio",8:"Agosto",9:"Septiembre",10:"Octubre",11:"Noviembre",12:"Diciembre"}
@@ -27,10 +27,26 @@ def show():
         </div>""", unsafe_allow_html=True)
 
     st.markdown("---")
+    st.markdown("---")
+    col_corte1, col_corte2 = st.columns(2)
+    with col_corte1:
+        usar_corte = st.checkbox("Especificar fecha de corte manual",
+                                  help="Por defecto corta en el último día con marcaciones importadas")
+    with col_corte2:
+        if usar_corte:
+            fecha_corte_val = st.date_input("Mostrar hasta esta fecha",
+                                             value=date.today() - timedelta(days=1))
+            fecha_corte_str = fecha_corte_val.strftime("%Y-%m-%d")
+        else:
+            fecha_corte_str = None
+            st.markdown("""<div class="alert-info">
+              📌 El Excel va a mostrar hasta el último día con marcaciones cargadas.
+            </div>""", unsafe_allow_html=True)
+
     if st.button("🚀 Generar y descargar Excel", type="primary", use_container_width=True):
         with st.spinner("Calculando y generando Excel..."):
             try:
-                xlsx = generar_excel(periodo)
+                xlsx = generar_excel(periodo, fecha_corte=fecha_corte_str)
                 nombre = f"Papel_Trabajo_{MESES_ES[mes]}_{anio}.xlsx"
                 log_auditoria(u["username"],"EXPORTAR_EXCEL",detalle=periodo)
                 st.download_button(f"⬇️ Descargar {nombre}", data=xlsx,
