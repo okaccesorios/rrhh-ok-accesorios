@@ -20,8 +20,8 @@ def _bd():
 DARK="1F3864"; BLUE="2E75B6"; LBLUE="D6E4F0"; YEL="FFF2CC"
 GREEN="E2EFDA"; LGRY="F2F2F2"; RED="FCE4D6"; WHITE="FFFFFF"
 
-def generar_excel(periodo: str) -> bytes:
-    resumen = calcular_periodo(periodo)
+def generar_excel(periodo: str, fecha_corte: str = None) -> bytes:
+    resumen = calcular_periodo(periodo, fecha_corte=fecha_corte)
     anio, mes = int(periodo[:4]), int(periodo[5:7])
     mes_str = f"{MESES_ES.get(mes, mes)} {anio}"
 
